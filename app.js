@@ -1,4 +1,9 @@
-import "dotenv/config";
+// app.js — News Pulse API (Express, Node 22)
+// Features: feeds, breaking, translate, TTS, weather, gold, Telegram webhook (Azad Studio), screenshot verify
+
+// Optional dotenv load (not needed on Render; safe locally)
+try { await import("dotenv/config"); } catch (_) {}
+
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -23,8 +28,9 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const parser = new Parser();
 const OZ_TO_G = 31.1034768;
 
-// ----------------- helpers
+// =============== helpers ===============
 function cache(res, seconds = 60, swr = 60) {
+  // Edge/CDN-friendly caching headers
   res.set("Cache-Control", `public, s-maxage=${seconds}, stale-while-revalidate=${swr}`);
   res.set("CDN-Cache-Control", `max-age=${seconds}, stale-while-revalidate=${swr}`);
   res.set("Vary", "Accept-Encoding");
@@ -70,7 +76,7 @@ function dedupeByLink(items) {
   const s = new Set(); return items.filter(i => s.has(i.link) ? false : (s.add(i.link), true));
 }
 
-// ----------------- sources
+// =============== sources ===============
 const sources = {
   Hyderabad: ["https://telanganatoday.com/hyderabad/feed"],
   Telangana: ["https://telanganatoday.com/telangana/feed","https://www.thehindu.com/news/national/feeder/default.rss"],
@@ -81,14 +87,15 @@ const sources = {
   Health: ["https://www.thehindu.com/sci-tech/health/feeder/default.rss"]
 };
 
-// ----------------- LLM helpers
+// =============== LLM helpers ===============
 async function summarize(url, source) {
   try {
     const r = await fetchWithTimeout(url);
     const html = await r.text();
     const text = stripHtml(html).slice(0, 8000);
     const sys = "You summarize news accurately and concisely. No speculation.";
-    const prompt = `Summarize into JSON with keys: {"short_story":"80–140 words","bullets":["...","...","..."]}. Use neutral tone.`;
+    const prompt = `Summarize into strict JSON: {"short_story":"80–140 words","bullets":["...","...","..."]}. Neutral tone.`;
+
     const out = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
@@ -110,10 +117,14 @@ async function translateText(text, target) {
   return (out.choices?.[0]?.message?.content || "").trim();
 }
 
-// ----------------- in-memory buffer (Azad Studio via Telegram webhook)
+// =============== in-memory Azad Studio buffer (temporary; single instance) ===============
 const studioBuffer = []; const MAX_STUDIO = 50;
+function pushStudio(obj) {
+  studioBuffer.unshift(obj);
+  if (studioBuffer.length > MAX_STUDIO) studioBuffer.pop();
+}
 
-// ----------------- routes
+// =============== routes ===============
 app.get("/api/health", (req, res) => res.json({ ok: true, node: process.version, time: Date.now() }));
 
 app.get("/api/feed", async (req, res) => {
@@ -163,7 +174,7 @@ app.get("/api/breaking", async (req, res) => {
   res.json({ items: items.sort((a,b)=>b.score-a.score).slice(0,5) });
 });
 
-// translate target: hi|ur|te|romhi
+// translate: target hi|ur|te|romhi
 app.post("/api/translate", async (req, res) => {
   const { text, target } = req.body || {};
   if (!text || !target) return res.status(400).json({ error: "text and target required" });
@@ -249,40 +260,62 @@ app.get("/api/gold", async (req, res) => {
 });
 
 // Telegram webhook (channel posts + DM submissions)
-const studioMax = 50;
+// IMPORTANT: set webhook with &secret_token=ADMIN_KEY so Telegram sends header X-Telegram-Bot-Api-Secret-Token
 app.post("/telegram/webhook", express.json(), async (req, res) => {
   try {
-    if (process.env.ADMIN_KEY) {
-      const secret = req.headers["x-telegram-bot-api-secret-token"];
-      if (secret !== process.env.ADMIN_KEY) return res.sendStatus(401);
+    const headerToken =
+      req.get("X-Telegram-Bot-Api-Secret-Token") ||
+      req.get("X-Telegram-Bot-Api-Secret") || ""; // fallback if you ever set differently
+    const expected = (process.env.ADMIN_KEY || "").trim();
+    const incoming = headerToken.trim();
+
+    if (expected) {
+      if (!incoming || incoming !== expected) {
+        if (process.env.DEBUG === "1") {
+          console.warn("Webhook auth mismatch", {
+            incoming_len: incoming.length, expected_len: expected.length,
+            incoming_preview: incoming ? incoming.slice(0,4)+"..."+incoming.slice(-4) : null
+          });
+        }
+        return res.sendStatus(401);
+      }
     }
+
     const update = req.body || {};
     const ch = update.channel_post;
     const msg = update.message;
-    const push = (obj) => { studioBuffer.unshift(obj); if (studioBuffer.length > studioMax) studioBuffer.pop(); };
 
     if (ch?.chat?.type === "channel") {
       let type = "text", file_id = null;
       if (ch.photo?.length) { type = "photo"; file_id = ch.photo.slice(-1)[0].file_id; }
       if (ch.video) { type = "video"; file_id = ch.video.file_id; }
       const text = (ch.text || ch.caption || "");
-      push({
+      pushStudio({
         id: ch.message_id, type, file_id,
         title: text.split("\n")[0]?.slice(0, 100) || "",
         caption: text, date: ch.date, tags: []
       });
     } else if (msg?.chat?.type === "private") {
+      // Optional: member submissions via DM to bot
       let type = "text", file_id = null;
       if (msg.photo?.length) { type = "photo"; file_id = msg.photo.slice(-1)[0].file_id; }
       if (msg.video) { type = "video"; file_id = msg.video.file_id; }
       const text = (msg.text || msg.caption || "");
-      push({ id: msg.message_id, type, file_id, title: text.split("\n")[0]?.slice(0,100)||"", caption: text, date: msg.date, tags: [] });
+      pushStudio({
+        id: msg.message_id, type, file_id,
+        title: text.split("\n")[0]?.slice(0, 100) || "",
+        caption: text, date: msg.date, tags: []
+      });
     }
+
     res.sendStatus(200);
-  } catch { res.sendStatus(200); }
+  } catch (e) {
+    console.error("Webhook error", e?.message);
+    res.sendStatus(200);
+  }
 });
 
-// Proxy Telegram file (keeps bot token server-side)
+// Proxy Telegram file (bot token stays server-side)
 app.get("/tg/file/:file_id", async (req, res) => {
   try {
     const token = process.env.BOT_TOKEN;
@@ -294,16 +327,22 @@ app.get("/tg/file/:file_id", async (req, res) => {
   } catch { res.sendStatus(500); }
 });
 
-// Azad Studio feed (from memory)
+// Azad Studio feed (from memory; for multi-instance use Redis later)
 app.get("/api/azad-studio", (req, res) => {
   cache(res, 30, 30);
-  const out = studioBuffer.map(p => ({ ...p, mediaUrl: p.file_id ? `/tg/file/${p.file_id}` : null, source: "Azad Studio" }));
+  const out = studioBuffer.map(p => ({
+    ...p,
+    mediaUrl: p.file_id ? `/tg/file/${p.file_id}` : null,
+    source: "Azad Studio"
+  }));
   res.json({ items: out });
 });
 
-// Admin notify (stub)  header: x-admin-key: ADMIN_KEY
+// Admin notify (stub). Header: x-admin-key: ADMIN_KEY
 app.post("/api/notify/breaking", (req, res) => {
-  if ((req.headers["x-admin-key"] || "") !== (process.env.ADMIN_KEY || "")) return res.status(401).json({ error: "unauthorized" });
+  if ((req.headers["x-admin-key"] || "") !== (process.env.ADMIN_KEY || "")) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
   res.json({ ok: true });
 });
 
@@ -315,5 +354,3 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
-
-
