@@ -20,7 +20,6 @@
 "rss-parser": "^3.12.0"
 }
 }
-Ensure “ioredis” is listed:
 "dependencies": {
 "compression": "^1.7.4",
 "cors": "^2.8.5",
@@ -34,3 +33,4 @@ Ensure “ioredis” is listed:
 "openai": "^4.57.2",
 "rss-parser": "^3.12.0"
 }
+
