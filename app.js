@@ -1,4 +1,28 @@
-/app.post("/telegram/webhook", express.json(), async (req, res) => {
+import Redis from "ioredis";
+const redis = new Redis(process.env.REDIS_URL);
+const AZAD_KEY = "azad:posts";
+async function pushStudioPost(post) {
+await redis.lpush(AZAD_KEY, JSON.stringify(post));
+await redis.ltrim(AZAD_KEY, 0, 49); // keep last 50
+}
+async function getStudioPosts() {
+const rows = await redis.lrange(AZAD_KEY, 0, 49);
+return rows.map((s) => JSON.parse(s));
+}
+
+In your /telegram/webhook handler, replace the current in-memory push with:
+await pushStudioPost({
+id: ch.message_id, type, file_id,
+title: text.split("\n")[0]?.slice(0,100) || "",
+caption: text, date: ch.date, tags: []
+});
+
+In GET /api/azad-studio, replace the memory read with:
+app.get("/api/azad-studio", async (req, res) => {
+const items = await getStudioPosts();
+const out = items.map(p => ({ ...p, mediaUrl: p.file_id ? /tg/file/${p.file_id} : null, source: "Azad Studio" }));
+res.json({ items: out });
+});/app.post("/telegram/webhook", express.json(), async (req, res) => {
 const headerToken =
 req.get("X-Telegram-Bot-Api-Secret-Token") || // correct header
 req.get("X-Telegram-Bot-Api-Secret"); // fallback if you ever used the shorter name
@@ -330,4 +354,5 @@ app.use((err, req, res, next) => {
 
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
 
