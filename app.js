@@ -249,38 +249,65 @@ app.get("/api/gold", async (req, res) => {
 });
 
 // Telegram webhook (channel posts + DM submissions)
-const studioMax = 50;
-app.post("/telegram/webhook", express.json(), async (req, res) => {
-  try {
-    if (process.env.ADMIN_KEY) {
-      const secret = req.headers["x-telegram-bot-api-secret-token"];
-      if (secret !== process.env.ADMIN_KEY) return res.sendStatus(401);
-    }
-    const update = req.body || {};
-    const ch = update.channel_post;
-    const msg = update.message;
-    const push = (obj) => { studioBuffer.unshift(obj); if (studioBuffer.length > studioMax) studioBuffer.pop(); };
+// 2) Inspect top-level keys to see what Telegram sent (only when DEBUG=1)
+const update = req.body || {};
+if (process.env.DEBUG === "1") {
+  console.log("update keys:", Object.keys(update));
+}
 
-    if (ch?.chat?.type === "channel") {
-      let type = "text", file_id = null;
-      if (ch.photo?.length) { type = "photo"; file_id = ch.photo.slice(-1)[0].file_id; }
-      if (ch.video) { type = "video"; file_id = ch.video.file_id; }
-      const text = (ch.text || ch.caption || "");
-      push({
-        id: ch.message_id, type, file_id,
-        title: text.split("\n")[0]?.slice(0, 100) || "",
-        caption: text, date: ch.date, tags: []
-      });
-    } else if (msg?.chat?.type === "private") {
-      let type = "text", file_id = null;
-      if (msg.photo?.length) { type = "photo"; file_id = msg.photo.slice(-1)[0].file_id; }
-      if (msg.video) { type = "video"; file_id = msg.video.file_id; }
-      const text = (msg.text || msg.caption || "");
-      push({ id: msg.message_id, type, file_id, title: text.split("\n")[0]?.slice(0,100)||"", caption: text, date: msg.date, tags: [] });
-    }
-    res.sendStatus(200);
-  } catch { res.sendStatus(200); }
-});
+// 3) Unify channel events
+const ch = update.channel_post || update.edited_channel_post;
+if (ch?.chat?.type === "channel") {
+  let type = "text", file_id = null;
+  if (Array.isArray(ch.photo) && ch.photo.length) {
+    type = "photo";
+    file_id = ch.photo[ch.photo.length - 1].file_id; // largest size
+  }
+  if (ch.video) {
+    type = "video";
+    file_id = ch.video.file_id;
+  }
+  const text = (ch.text || ch.caption || "");
+  const title = (text.split("\n")[0] || "").slice(0, 100);
+  pushStudio({
+    id: ch.message_id,
+    type,
+    file_id,
+    title,
+    caption: text,
+    date: ch.date,
+    tags: []
+  });
+  return res.sendStatus(200);
+}
+
+// 4) Optional: allow private DM submissions (ignored otherwise)
+const msg = update.message || update.edited_message;
+if (msg?.chat?.type === "private") {
+  let type = "text", file_id = null;
+  if (Array.isArray(msg.photo) && msg.photo.length) {
+    type = "photo";
+    file_id = msg.photo[msg.photo.length - 1].file_id;
+  }
+  if (msg.video) {
+    type = "video";
+    file_id = msg.video.file_id;
+  }
+  const text = (msg.text || msg.caption || "");
+  pushStudio({
+    id: msg.message_id,
+    type,
+    file_id,
+    title: (text.split("\n")[0] || "").slice(0, 100),
+    caption: text,
+    date: msg.date,
+    tags: []
+  });
+  return res.sendStatus(200);
+}
+
+// 5) Unknown update types are OK
+return res.sendStatus(200);
 
 // Proxy Telegram file (keeps bot token server-side)
 app.get("/tg/file/:file_id", async (req, res) => {
@@ -315,4 +342,5 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
 
