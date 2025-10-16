@@ -1,4 +1,17 @@
-// Optional: load .env only in local dev; on Render this is not needed
+/app.post("/telegram/webhook", express.json(), async (req, res) => {
+const headerToken =
+req.get("X-Telegram-Bot-Api-Secret-Token") || // correct header
+req.get("X-Telegram-Bot-Api-Secret"); // fallback if you ever used the shorter name
+
+if (process.env.ADMIN_KEY) {
+if (!headerToken || headerToken.trim() !== process.env.ADMIN_KEY.trim()) {
+return res.sendStatus(401);
+}
+}
+
+// ... your existing update handling
+res.sendStatus(200);
+});/ Optional: load .env only in local dev; on Render this is not needed
 try { await import('dotenv/config'); } catch (_) {}
 import express from "express";
 import cors from "cors";
@@ -317,3 +330,4 @@ app.use((err, req, res, next) => {
 
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
