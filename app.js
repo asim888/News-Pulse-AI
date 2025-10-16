@@ -1,4 +1,5 @@
-import "dotenv/config";
+// Optional: load .env only in local dev; on Render this is not needed
+try { await import('dotenv/config'); } catch (_) {}
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -313,5 +314,6 @@ app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: "server_error" });
 });
+
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
