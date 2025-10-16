@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: newspulse-api
+    env: node
+    region: singapore
+    plan: starter
+    buildCommand: npm ci
+    startCommand: node app.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22
+      # Add the following in the Render dashboard with real values:
+      # - OPENAI_API_KEY
+      # - BOT_TOKEN
+      # - TELEGRAM_CHANNEL
+      # - ADMIN_KEY
+      # - DEFAULT_CITY
+      # - TZ
+      # Optional:
+      # - NEWSAPI_KEY
+      # - GNEWS_API_KEY
+      # - FCM_SERVER_KEY
+      # - OPENWEATHER_KEY
+      # - METALS_API_KEY
