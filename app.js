@@ -250,6 +250,19 @@ app.get("/api/gold", async (req, res) => {
 
 // Telegram webhook (channel posts + DM submissions)
 // 2) Inspect top-level keys to see what Telegram sent (only when DEBUG=1)
+app.post("/telegram/webhook", express.json(), async (req, res) => {
+try {
+// 1) Auth: verify secret header only if ADMIN_KEY is set
+const headerToken =
+req.get("X-Telegram-Bot-Api-Secret-Token") ||
+req.get("X-Telegram-Bot-Api-Secret") || "";
+const expected = (process.env.ADMIN_KEY || "").trim();
+const incoming = headerToken.trim();
+if (expected && incoming !== expected) return res.sendStatus(401);
+
+text
+
+// 2) Inspect top-level keys to see what Telegram sent (only when DEBUG=1)
 const update = req.body || {};
 if (process.env.DEBUG === "1") {
   console.log("update keys:", Object.keys(update));
@@ -279,6 +292,40 @@ if (ch?.chat?.type === "channel") {
     tags: []
   });
   return res.sendStatus(200);
+}
+
+// 4) Optional: allow private DM submissions (ignored otherwise)
+const msg = update.message || update.edited_message;
+if (msg?.chat?.type === "private") {
+  let type = "text", file_id = null;
+  if (Array.isArray(msg.photo) && msg.photo.length) {
+    type = "photo";
+    file_id = msg.photo[msg.photo.length - 1].file_id;
+  }
+  if (msg.video) {
+    type = "video";
+    file_id = msg.video.file_id;
+  }
+  const text = (msg.text || msg.caption || "");
+  pushStudio({
+    id: msg.message_id,
+    type,
+    file_id,
+    title: (text.split("\n")[0] || "").slice(0, 100),
+    caption: text,
+    date: msg.date,
+    tags: []
+  });
+  return res.sendStatus(200);
+}
+
+// 5) Unknown update types are OK
+return res.sendStatus(200);
+} catch (e) {
+console.error("Webhook error", e?.message);
+return res.sendStatus(200);
+}
+});
 }
 
 // 4) Optional: allow private DM submissions (ignored otherwise)
@@ -342,5 +389,6 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
 
 
