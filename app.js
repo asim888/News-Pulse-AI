@@ -261,12 +261,15 @@ app.get("/api/gold", async (req, res) => {
 
 // Telegram webhook (channel posts + DM submissions)
 // IMPORTANT: set webhook with &secret_token=ADMIN_KEY so Telegram sends header X-Telegram-Bot-Api-Secret-Token
-app.post("/telegram/webhook", express.json(), async (req, res) => {
+app.post("/telegram/webhook", const update = req.body || {}: express.json(), async (req, res) => {
   try {
     const headerToken =
       req.get("X-Telegram-Bot-Api-Secret-Token") ||
       req.get("X-Telegram-Bot-Api-Secret") || ""; // fallback if you ever set differently
     const expected = (process.env.ADMIN_KEY || "").trim();
+     {
+console.log("update keys:", Object.keys(update));
+}
     const incoming = headerToken.trim();
 
     if (expected) {
@@ -354,3 +357,4 @@ app.use((err, req, res, next) => {
 });
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
