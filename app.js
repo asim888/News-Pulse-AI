@@ -83,15 +83,8 @@ Health: ["https://www.thehindu.com/sci-tech/health/feeder/default.rss"]
 };
 
 /* LLM helpers */
-{
-const r = await fetchWithTimeout(url);
-const html = await r.text();
-const text = stripHtml(html).slice(0, 8000);
-
-text
-
 const sys = "You summarize news accurately and concisely. No speculation.";
-// Use a simple hyphen (80-140) to avoid smart punctuation issues
+// Use normal hyphen to avoid smart punctuation issues
 const prompt = `Summarize into strict JSON: {"short_story":"80-140 words","bullets":["...","...","..."]}. Neutral tone.`;
 
 const out = await openai.chat.completions.create({
@@ -103,6 +96,8 @@ const out = await openai.chat.completions.create({
   ]
 });
 
+const content = out.choices?.[0]?.message?.content || "{}";
+return parseJsonLoose(content) || { short_story: "", bullets: [] };
 const content = out.choices?.[0]?.message?.content || "{}";
 return parseJsonLoose(content) || { short_story: "", bullets: [] };
 } catch {
@@ -434,6 +429,7 @@ app.use((req, res) => res.status(404).json({ error: "not_found", path: req.origi
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: "server_error" }); });
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
 
 
 
