@@ -83,8 +83,7 @@ Health: ["https://www.thehindu.com/sci-tech/health/feeder/default.rss"]
 };
 
 /* LLM helpers */
-async function summarize(url, source) {
-try {
+{
 const r = await fetchWithTimeout(url);
 const html = await r.text();
 const text = stripHtml(html).slice(0, 8000);
@@ -435,6 +434,7 @@ app.use((req, res) => res.status(404).json({ error: "not_found", path: req.origi
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: "server_error" }); });
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
 
 
 
