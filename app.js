@@ -88,28 +88,53 @@ try {
 const r = await fetchWithTimeout(url);
 const html = await r.text();
 const text = stripHtml(html).slice(0, 8000);
+
+text
+
 const sys = "You summarize news accurately and concisely. No speculation.";
-const prompt = Summarize into strict JSON: {"short_story":"80–140 words","bullets":["...","...","..."]}. Neutral tone.;
+// Use a simple hyphen (80-140) to avoid smart punctuation issues
+const prompt = `Summarize into strict JSON: {"short_story":"80-140 words","bullets":["...","...","..."]}. Neutral tone.`;
+
 const out = await openai.chat.completions.create({
-model: "gpt-4o-mini",
-temperature: 0.2,
-messages: [
-{ role: "system", content: sys },
-{ role: "user", content: ${prompt}\n\n${text} }
-]
+  model: "gpt-4o-mini",
+  temperature: 0.2,
+  messages: [
+    { role: "system", content: sys },
+    { role: "user", content: `${prompt}\n\n${text}` }
+  ]
 });
+
 const content = out.choices?.[0]?.message?.content || "{}";
 return parseJsonLoose(content) || { short_story: "", bullets: [] };
-} catch { return { short_story: "", bullets: [] }; }
+} catch {
+return { short_story: "", bullets: [] };
 }
-async function translateText(text, target) {
-const sys = Translate news text. Keep names and numbers. Urdu in Nastaliq; Telugu proper script. Target: ${target}.;
+}
+
+Alternatively (even simpler, inline the strings)
+
+async function summarize(url, source) {
+try {
+const r = await fetchWithTimeout(url);
+const html = await r.text();
+const text = stripHtml(html).slice(0, 8000);
+
+text
+
 const out = await openai.chat.completions.create({
-model: "gpt-4o-mini",
-temperature: 0.2,
-messages: [{ role: "system", content: sys }, { role: "user", content: text }]
+  model: "gpt-4o-mini",
+  temperature: 0.2,
+  messages: [
+    { role: "system", content: "You summarize news accurately and concisely. No speculation." },
+    { role: "user", content: `Summarize into strict JSON: {"short_story":"80-140 words","bullets":["...","...","..."]}. Neutral tone.\n\n${text}` }
+  ]
 });
-return (out.choices?.[0]?.message?.content || "").trim();
+
+const content = out.choices?.[0]?.message?.content || "{}";
+return parseJsonLoose(content) || { short_story: "", bullets: [] };
+} catch {
+return { short_story: "", bullets: [] };
+}
 }
 
 /* In-memory fallback */
@@ -410,6 +435,7 @@ app.use((req, res) => res.status(404).json({ error: "not_found", path: req.origi
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: "server_error" }); });
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
 
 
 
