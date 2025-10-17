@@ -162,6 +162,25 @@ await u.ltrim(AZAD_LIST, 0, 49);
 }
 return;
 }
+app.get("/api/redis/where", async (req, res) => {
+const type = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+? "upstash-rest"
+: (process.env.REDIS_URL ? "ioredis" : "memory");
+let ping = null, error = null;
+try {
+if (type === "upstash-rest") {
+const u = getUpstash();
+// Upstash supports ping()
+ping = await u.ping();
+} else if (type === "ioredis") {
+const r = await getRedis();
+if (r) ping = await r.ping();
+} else {
+ping = "ok";
+}
+} catch (e) { error = e.message; }
+res.json({ type, ping, error });
+});
 // Fallback: ioredis (TCP)
 const r = await getRedis();
 if (r) {
@@ -429,6 +448,7 @@ app.use((req, res) => res.status(404).json({ error: "not_found", path: req.origi
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: "server_error" }); });
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
 
 
 
