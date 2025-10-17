@@ -1,7 +1,3 @@
-
-
-
-
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -395,3 +391,4 @@ app.use((req, res) => res.status(404).json({ error: "not_found", path: req.origi
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: "server_error" }); });
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
