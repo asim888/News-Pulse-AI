@@ -13,7 +13,31 @@ services:
         value: production
       - key: NODE_VERSION
         value: 22
-      # Add the following in the Render dashboard with real values:
+     services:
+
+type: redis
+name: azad-redis
+plan: starter
+maxmemoryPolicy: volatile-lru
+type: web
+name: newspulse-api
+env: node
+region: singapore
+plan: starter
+buildCommand: npm install --no-audit --no-fund
+startCommand: node app.js
+healthCheckPath: /api/health
+autoDeploy: true
+envVars:
+key: NODE_VERSION
+value: 22
+key: NODE_ENV
+value: production
+key: REDIS_URL
+fromService:
+name: azad-redis
+type: redis
+property: connectionString # Add the following in the Render dashboard with real values:
       # - OPENAI_API_KEY
       # - BOT_TOKEN
       # - TELEGRAM_CHANNEL
@@ -25,4 +49,5 @@ services:
       # - GNEWS_API_KEY
       # - FCM_SERVER_KEY
       # - OPENWEATHER_KEY
+
       # - METALS_API_KEY
