@@ -1,3 +1,4 @@
+import { Redis as UpstashRedis } from "@upstash/redis";
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -121,47 +122,80 @@ const studioBuffer = []; const MAX_STUDIO = 50;
 function pushStudioMem(p) { studioBuffer.unshift(p); if (studioBuffer.length > MAX_STUDIO) studioBuffer.pop(); }
 
 /* ---------- Lazy Redis ---------- */
-let redis = null;
-async function getRedis() {
-  if (redis) return redis;
-  if (!process.env.REDIS_URL) return null;
-  try {
-    const { default: Redis } = await import("ioredis");
-    const r = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
-    r.on("error", (err) => console.error("redis error:", err.message));
-    redis = r;
-    return redis;
-  } catch (e) {
-    console.error("redis init failed:", e.message);
-    return null;
-  }
-}
 const AZAD_LIST = "azad:posts";
 const AZAD_SEEN = "azad:seen";
-async function pushStudioPost(p) {
-  try {
-    const r = await getRedis();
-    if (!r) { pushStudioMem(p); return; }
-    const added = await r.sadd(AZAD_SEEN, String(p.id)); // 1 if new
-    if (added === 1) {
-      await r.lpush(AZAD_LIST, JSON.stringify(p));
-      await r.ltrim(AZAD_LIST, 0, 49);
-    }
-  } catch (e) {
-    console.error("redis push err:", e.message);
-    pushStudioMem(p);
-  }
+
+let redis = null;
+async function getRedis() {
+if (redis) return redis;
+if (!process.env.REDIS_URL) return null;
+try {
+const { default: IORedis } = await import("ioredis");
+const r = new IORedis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
+r.on("error", (err) => console.error("ioredis error:", err.message));
+redis = r;
+return redis;
+} catch (e) {
+console.error("ioredis init failed:", e.message);
+return null;
 }
+}
+
+let upstash = null;
+function getUpstash() {
+const url = process.env.UPSTASH_REDIS_REST_URL;
+const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+if (!url || !token) return null;
+if (!upstash) upstash = new UpstashRedis({ url, token });
+return upstash;
+}
+
+async function pushStudioPost(p) {
+try {
+// Prefer Upstash REST (no TCP resets)
+const u = getUpstash();
+if (u) {
+const added = await u.sadd(AZAD_SEEN, String(p.id)); // 1 if new
+if (added === 1) {
+await u.lpush(AZAD_LIST, JSON.stringify(p));
+await u.ltrim(AZAD_LIST, 0, 49);
+}
+return;
+}
+// Fallback: ioredis (TCP)
+const r = await getRedis();
+if (r) {
+const added = await r.sadd(AZAD_SEEN, String(p.id));
+if (added === 1) {
+await r.lpush(AZAD_LIST, JSON.stringify(p));
+await r.ltrim(AZAD_LIST, 0, 49);
+}
+return;
+}
+// Memory fallback
+pushStudioMem(p);
+} catch (e) {
+console.error("redis push err:", e.message);
+pushStudioMem(p);
+}
+}
+
 async function getStudioPosts() {
-  try {
-    const r = await getRedis();
-    if (!r) return studioBuffer;
-    const rows = await r.lrange(AZAD_LIST, 0, 49);
-    return rows.map(s => { try { return JSON.parse(s); } catch { return null; } }).filter(Boolean);
-  } catch (e) {
-    console.error("redis read err:", e.message);
-    return studioBuffer;
-  }
+try {
+const u = getUpstash();
+if (u) {
+const rows = await u.lrange(AZAD_LIST, 0, 49);
+return rows.map(s => { try { return JSON.parse(s); } catch { return null; } }).filter(Boolean);
+}
+const r = await getRedis();
+if (r) {
+const rows = await r.lrange(AZAD_LIST, 0, 49);
+return rows.map(s => { try { return JSON.parse(s); } catch { return null; } }).filter(Boolean);
+}
+return studioBuffer;
+} catch (e) {
+console.error("redis read err:", e.message);
+return studioBuffer;
 }
 
 /* ---------- Routes ---------- */
@@ -395,5 +429,6 @@ app.use((req, res) => res.status(404).json({ error: "not_found", path: req.origi
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: "server_error" }); });
 
 app.listen(PORT, () => console.log("API up on :" + PORT));
+
 
 
